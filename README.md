@@ -22,4 +22,6 @@ a.click();
 // 釋放記憶體
 URL.revokeObjectURL(a.href);
 ```
+## 取得題目資訊
+-標題、標籤、通過比率、出處(作者)
 
