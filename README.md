@@ -31,6 +31,9 @@ URL.revokeObjectURL(a.href);
 ## 題庫內容統計分析 [程式](analysis.py)
 
 # 網頁設計
+## 雛形設計
+![雛形1](web_prototype1.png)
+![雛形2](web_prototype2.png)
 ## AI 提示詞
 ```css
 製作 zerojudge 題庫檢索的網頁。使用純 html/js/css 設計純前端的網頁，使用專業科技風格設計。
