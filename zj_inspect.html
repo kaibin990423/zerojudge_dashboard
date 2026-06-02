@@ -1,0 +1,924 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ZeroJudge 題庫智能檢索系統</title>
+    <style>
+        :root {
+            --bg-main: #0a0f1d;
+            --bg-side: #111827;
+            --bg-card: #1f2937;
+            --border-color: #2e3d52;
+            --text-primary: #e5e7eb;
+            --text-secondary: #9ca3af;
+            --accent-neon: #00f2fe;
+            --accent-purple: #7928ca;
+            --accent-green: #10b981;
+            --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: var(--font-family);
+            background-color: var(--bg-main);
+            color: var(--text-primary);
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Top Header */
+        header {
+            background-color: var(--bg-side);
+            border-bottom: 1px solid var(--border-color);
+            padding: 15px 25px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+
+        header h1 {
+            font-size: 1.3rem;
+            font-weight: 700;
+            letter-spacing: 1px;
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        header h1::before {
+            content: '';
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            background: linear-gradient(135deg, var(--accent-neon), var(--accent-purple));
+            border-radius: 50%;
+            box-shadow: 0 0 10px var(--accent-neon);
+        }
+
+        .status-badge {
+            font-size: 0.85rem;
+            padding: 4px 12px;
+            background: rgba(0, 242, 254, 0.1);
+            border: 1px solid rgba(0, 242, 254, 0.3);
+            border-radius: 20px;
+            color: var(--accent-neon);
+        }
+
+        /* Layout Container */
+        .app-container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+        }
+
+        /* Base Column Styling */
+        .column {
+            display: flex;
+            flex-direction: column;
+            border-right: 1px solid var(--border-color);
+            background-color: var(--bg-main);
+            height: 100%;
+        }
+
+        .column-header {
+            padding: 15px 20px;
+            background-color: var(--bg-side);
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 600;
+            font-size: 0.95rem;
+            color: #fff;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        /* LEFT COLUMN */
+        #left-col {
+            width: 22%;
+            min-width: 280px;
+            background-color: var(--bg-side);
+        }
+
+        .tabs {
+            display: flex;
+            background-color: rgba(0, 0, 0, 0.2);
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .tab-btn {
+            flex: 1;
+            padding: 12px;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+            border-bottom: 2px solid transparent;
+        }
+
+        .tab-btn:hover {
+            color: #fff;
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .tab-btn.active {
+            color: var(--accent-neon);
+            border-bottom-color: var(--accent-neon);
+            background: rgba(0, 242, 254, 0.05);
+        }
+
+        .list-container {
+            flex: 1;
+            overflow-y: auto;
+            padding: 10px;
+        }
+
+        .list-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 14px;
+            margin-bottom: 6px;
+            border-radius: 6px;
+            cursor: pointer;
+            background-color: rgba(255, 255, 255, 0.02);
+            border: 1px solid transparent;
+            transition: all 0.2s;
+            font-size: 0.88rem;
+        }
+
+        .list-item:hover {
+            background-color: var(--bg-card);
+            border-color: rgba(0, 242, 254, 0.2);
+            transform: translateX(4px);
+        }
+
+        .list-item.active {
+            background: linear-gradient(90deg, rgba(0, 242, 254, 0.15), transparent);
+            border-left: 4px solid var(--accent-neon);
+            color: #fff;
+            font-weight: bold;
+        }
+
+        .item-count {
+            background-color: rgba(255, 255, 255, 0.1);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        /* MIDDLE COLUMN */
+        #mid-col {
+            width: 33%;
+            min-width: 350px;
+            position: relative;
+        }
+
+        .canvas-container {
+            flex: 1;
+            position: relative;
+            background-color: #0d1324;
+            overflow: hidden;
+        }
+
+        canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            cursor: grab;
+        }
+
+        canvas:active {
+            cursor: grabbing;
+        }
+
+        .map-hint {
+            position: absolute;
+            bottom: 15px;
+            left: 15px;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            background: rgba(17, 24, 39, 0.8);
+            padding: 6px 12px;
+            border-radius: 4px;
+            pointer-events: none;
+            border: 1px solid var(--border-color);
+        }
+
+        /* RIGHT COLUMN */
+        #right-col {
+            width: 45%;
+            flex: 1;
+            border-right: none;
+        }
+
+        .filter-panel {
+            padding: 15px 20px;
+            background-color: var(--bg-side);
+            border-bottom: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .slider-group {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        .slider-group label {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            white-space: nowrap;
+        }
+
+        .slider-group input[type="range"] {
+            flex: 1;
+            accent-color: var(--accent-neon);
+            cursor: pointer;
+        }
+
+        .slider-val {
+            font-family: monospace;
+            color: var(--accent-neon);
+            font-weight: bold;
+            font-size: 0.9rem;
+            min-width: 50px;
+            text-align: right;
+        }
+
+        .active-filters {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .filter-chip {
+            background: rgba(121, 40, 202, 0.2);
+            border: 1px solid rgba(121, 40, 202, 0.5);
+            padding: 3px 10px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            color: #d6bbfb;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .filter-chip span {
+            cursor: pointer;
+            font-weight: bold;
+        }
+
+        .filter-chip span:hover {
+            color: #ff4d4d;
+        }
+
+        .table-container {
+            flex: 1;
+            overflow: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            text-align: left;
+            font-size: 0.85rem;
+        }
+
+        th {
+            position: sticky;
+            top: 0;
+            background-color: var(--bg-side);
+            padding: 12px 15px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            border-bottom: 2px solid var(--border-color);
+            z-index: 10;
+        }
+
+        td {
+            padding: 12px 15px;
+            border-bottom: 1px solid var(--border-color);
+            color: var(--text-primary);
+            max-width: 200px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        tr:hover td {
+            background-color: rgba(255, 255, 255, 0.03);
+        }
+
+        .q-id {
+            font-family: monospace;
+            color: var(--accent-neon);
+            font-weight: bold;
+        }
+
+        .q-title {
+            font-weight: 500;
+        }
+
+        .badge-container {
+            display: flex;
+            gap: 4px;
+            flex-wrap: wrap;
+        }
+
+        .tag-badge {
+            background: rgba(255, 255, 255, 0.08);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+        }
+
+        .source-badge {
+            background: rgba(16, 185, 129, 0.1);
+            color: var(--accent-green);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            border: 1px solid rgba(16, 185, 129, 0.2);
+        }
+
+        .btn-link {
+            color: var(--accent-neon);
+            text-decoration: none;
+            border: 1px solid rgba(0, 242, 254, 0.3);
+            padding: 2px 8px;
+            border-radius: 4px;
+            transition: all 0.2s;
+        }
+
+        .btn-link:hover {
+            background: var(--accent-neon);
+            color: var(--bg-main);
+            box-shadow: 0 0 8px var(--accent-neon);
+        }
+
+        /* Scrollbar Styling */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--bg-main);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--border-color);
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-secondary);
+        }
+
+        /* Loading Overlay */
+        #loader {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            background: var(--bg-main);
+            z-index: 999;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 3px solid rgba(0, 242, 254, 0.1);
+            border-top-color: var(--accent-neon);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+
+    <div id="loader">
+        <div class="spinner"></div>
+        <p style="letter-spacing: 2px; color: var(--accent-neon);">載入題庫大數據中...</p>
+    </div>
+
+    <header>
+        <h1>ZeroJudge 題庫智能檢索網路</h1>
+        <div class="status-badge" id="total-stats">總計題數: -- 題</div>
+    </header>
+
+    <div class="app-container">
+        <div class="column" id="left-col">
+            <div class="tabs">
+                <button class="tab-btn active" onclick="switchLeftTab('tags')">核心標籤</button>
+                <button class="tab-btn" onclick="switchLeftTab('source')">題目出處</button>
+            </div>
+            <div class="list-container" id="left-list">
+                </div>
+        </div>
+
+        <div class="column" id="mid-col">
+            <div class="column-header">
+                <span>標籤關係網共生矩陣 (知識地圖)</span>
+            </div>
+            <div class="canvas-container" id="canvas-wrap">
+                <canvas id="graphCanvas"></canvas>
+                <div class="map-hint">💡 滾輪縮放、按住拖曳。點擊節點可二次過濾右側清單。</div>
+            </div>
+        </div>
+
+        <div class="column" id="right-col">
+            <div class="column-header">
+                <span>篩選題庫列表</span>
+                <span id="filtered-count" style="font-size:0.8rem; color:var(--accent-neon)">找到 0 題</span>
+            </div>
+            <div class="filter-panel">
+                <div class="slider-group">
+                    <label for="passrate-slider">最低通過人數 (AC 數):</label>
+                    <input type="range" id="passrate-slider" min="0" max="1000" value="0">
+                    <span class="slider-val" id="slider-val">0</span>
+                </div>
+                <div class="active-filters" id="active-filters-box">
+                    </div>
+            </div>
+            <div class="table-container">
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 15%">ID</th>
+                            <th style="width: 35%">題目名稱</th>
+                            <th style="width: 25%">相關標籤 / 出處</th>
+                            <th style="width: 15%">通過人數</th>
+                            <th style="width: 10%">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody id="questions-tbody">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 全域資料儲存
+        let rawData = [];
+        let currentTab = 'tags'; // 'tags' 或 'source'
+        let selectedMainItem = null; // 左側選中的單一項目名稱
+        let selectedSubTag = null;   // 中間關聯地圖二度選中的標籤名稱
+        let minPassrate = 0;
+        let maxPassrateData = 1000;
+
+        // 關聯圖畫布狀態
+        const canvas = document.getElementById('graphCanvas');
+        const ctx = canvas.getContext('2d');
+        let nodes = [];
+        let edges = [];
+        let transform = { x: 0, y: 0, k: 1 };
+        let draggedNode = null;
+        let isDraggingCanvas = false;
+        let dragStart = { x: 0, y: 0 };
+
+        // 初始載入
+        window.addEventListener('DOMContentLoaded', async () => {
+            setupCanvasSize();
+            window.addEventListener('resize', () => { setupCanvasSize(); renderGraph(); });
+            setupCanvasEvents();
+            setupSliderEvent();
+
+            try {
+                // 讀取同目錄下的 result.json
+                const response = await fetch('result.json');
+                if (!response.ok) throw new Error('無法讀取 result.json，請確認檔案位置。');
+                rawData = await response.json();
+                
+                // 清理原始資料中的格式
+                rawData = rawData.map(item => ({
+                    ...item,
+                    tags: Array.isArray(item.tags) ? item.tags.map(t => t.strip ? t.strip() : String(t).trim()).filter(Boolean) : [],
+                    source: Array.isArray(item.source) ? item.source.map(s => s.strip ? s.strip() : String(s).trim()).filter(Boolean) : [],
+                    passrateCount: item.passrate && item.passrate[0] ? parseInt(item.passrate[0], 10) || 0 : 0
+                }));
+
+                // 設定過濾拉桿最大值
+                const rates = rawData.map(q => q.passrateCount);
+                maxPassrateData = rates.length ? Math.max(...rates) : 1000;
+                document.getElementById('passrate-slider').max = maxPassrateData;
+
+                document.getElementById('total-stats').innerText = `總計題數: ${rawData.length} 題`;
+                document.getElementById('loader').style.display = 'none';
+
+                // 初始化渲染
+                initLeftList();
+                // 預設選中左側第一個
+                const firstItem = document.querySelector('.list-item');
+                if (firstItem) firstItem.click();
+
+            } catch (err) {
+                alert(err.message);
+                console.error(err);
+            }
+        });
+
+        // 1. 左側頁籤與列表引擎
+        function switchLeftTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+            event.target.classList.add('active');
+            initLeftList();
+        }
+
+        function initLeftList() {
+            const counter = {};
+            rawData.forEach(item => {
+                const array = item[currentTab];
+                if (array) {
+                    array.forEach(val => {
+                        counter[val] = (counter[val] || 0) + 1;
+                    });
+                }
+            });
+
+            // 排序
+            const sortedItems = Object.entries(counter).sort((a, b) => b[1] - a[1]);
+            const container = document.getElementById('left-list');
+            container.innerHTML = '';
+
+            sortedItems.forEach(([name, count]) => {
+                const div = document.createElement('div');
+                div.className = 'list-item';
+                if (selectedMainItem === name) div.classList.add('active');
+                
+                div.innerHTML = `
+                    <span>${name}</span>
+                    <span class="item-count">${count}</span>
+                `;
+                div.onclick = () => selectMainItem(name, div);
+                container.appendChild(div);
+            });
+        }
+
+        function selectMainItem(name, element) {
+            document.querySelectorAll('.list-item').forEach(el => el.classList.remove('active'));
+            element.classList.add('active');
+            
+            selectedMainItem = name;
+            selectedSubTag = null; // 切換大項時，清除二級標籤篩選
+            
+            updateFiltersAndResults();
+        }
+
+        // 2. 核心篩選與交叉矩陣邏輯
+        function updateFiltersAndResults() {
+            // A. 更新晶片組提示
+            const filterBox = document.getElementById('active-filters-box');
+            filterBox.innerHTML = '';
+            
+            if (selectedMainItem) {
+                const chip1 = document.createElement('div');
+                chip1.className = 'filter-chip';
+                chip1.innerHTML = `主軸: ${selectedMainItem}`;
+                filterBox.appendChild(chip1);
+            }
+            if (selectedSubTag) {
+                const chip2 = document.createElement('div');
+                chip2.className = 'filter-chip';
+                chip2.style.background = 'rgba(0, 242, 254, 0.2)';
+                chip2.style.borderColor = 'rgba(0, 242, 254, 0.5)';
+                chip2.style.color = '#fff';
+                chip2.innerHTML = `交集: ${selectedSubTag} <span onclick="clearSubTag(event)">×</span>`;
+                filterBox.appendChild(chip2);
+            }
+
+            // B. 計算經左側一級篩選後的「基底題目清單」，用來建立中間圖譜
+            const baseQuestions = rawData.filter(q => {
+                return q[currentTab] && q[currentTab].includes(selectedMainItem);
+            });
+
+            // 重新建構中間的標籤拓撲圖
+            buildRelationGraph(baseQuestions);
+
+            // C. 計算加上二級篩選（中間標籤）與拉桿數量的「最終清單」
+            const finalQuestions = baseQuestions.filter(q => {
+                // 二級標籤交叉過濾
+                if (selectedSubTag && (!q.tags || !q.tags.includes(selectedSubTag))) return false;
+                // 滑桿過濾
+                if (q.passrateCount < minPassrate) return false;
+                return true;
+            });
+
+            renderTable(finalQuestions);
+        }
+
+        function clearSubTag(e) {
+            e.stopPropagation();
+            selectedSubTag = null;
+            updateFiltersAndResults();
+        }
+
+        function setupSliderEvent() {
+            const slider = document.getElementById('passrate-slider');
+            const valDisplay = document.getElementById('slider-val');
+            slider.addEventListener('input', (e) => {
+                minPassrate = parseInt(e.target.value, 10);
+                valDisplay.innerText = minPassrate;
+                updateFiltersAndResults();
+            });
+        }
+
+        // 3. 右側表格繪製
+        function renderTable(list) {
+            document.getElementById('filtered-count').innerText = `找到 ${list.length} 題`;
+            const tbody = document.getElementById('questions-tbody');
+            tbody.innerHTML = '';
+
+            list.forEach(q => {
+                const tr = document.createElement('tr');
+                
+                // 標籤與出處綜合徽章
+                const tagsHtml = q.tags.map(t => `<span class="tag-badge">${t}</span>`).join('');
+                const sourceHtml = q.source.map(s => `<span class="source-badge">${s}</span>`).join('');
+
+                tr.innerHTML = `
+                    <td class="q-id">${q.id || 'N/A'}</td>
+                    <td class="q-title" title="${q.title || ''}">${q.title || '無題名'}</td>
+                    <td>
+                        <div class="badge-container">
+                            ${tagsHtml} ${sourceHtml}
+                        </div>
+                    </td>
+                    <td style="font-family: monospace; font-weight:600;">${q.passrateCount.toLocaleString()} AC</td>
+                    <td>
+                        <a class="btn-link" href="https://zerojudge.tw/ShowProblem?problemid=${q.id}" target="_blank">解題</a>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        // 4. 中間欄位 Canvas 拓撲關聯地圖
+        function setupCanvasSize() {
+            const wrap = document.getElementById('canvas-wrap');
+            canvas.width = wrap.clientWidth;
+            canvas.height = wrap.clientHeight;
+        }
+
+        function buildRelationGraph(questions) {
+            const tagWeights = {};
+            const cooccurrence = {};
+
+            // 統計權重
+            questions.forEach(q => {
+                q.tags.forEach(t => {
+                    tagWeights[t] = (tagWeights[t] || 0) + 1;
+                });
+
+                // 兩兩對齊建立連線權重
+                for (let i = 0; i < q.tags.length; i++) {
+                    for (let j = i + 1; j < q.tags.length; j++) {
+                        const t1 = q.tags[i];
+                        const t2 = q.tags[j];
+                        const key = t1 < t2 ? `${t1}_${t2}` : `${t2}_${t1}`;
+                        cooccurrence[key] = (cooccurrence[key] || 0) + 1;
+                    }
+                }
+            });
+
+            // 轉換為節點，限制地圖節點避免混亂 (取權重前40大標籤)
+            const sortedTags = Object.entries(tagWeights).sort((a,b)=>b[1]-a[1]).slice(0, 40);
+            const activeTagNames = sortedTags.map(e => e[0]);
+
+            // 保持舊節點位置的平滑過渡
+            const oldNodesMap = new Map(nodes.map(n => [n.id, n]));
+            
+            nodes = sortedTags.map(([name, weight]) => {
+                const old = oldNodesMap.get(name);
+                return {
+                    id: name,
+                    radius: 8 + Math.sqrt(weight) * 3,
+                    x: old ? old.x : canvas.width / 2 + (Math.random() - 0.5) * 200,
+                    y: old ? old.y : canvas.height / 2 + (Math.random() - 0.5) * 200,
+                    weight: weight,
+                    vx: 0, vy: 0
+                };
+            });
+
+            // 建立連線
+            edges = [];
+            Object.entries(cooccurrence).forEach(([key, weight]) => {
+                const [t1, t2] = key.split('_');
+                if (activeTagNames.includes(t1) && activeTagNames.includes(t2)) {
+                    edges.push({ source: t1, target: t2, weight: weight });
+                }
+            });
+
+            // 重啟物理力學模擬
+            if(nodes.length > 0) {
+                for (let i = 0; i < 60; i++) runPhysics(); // 預先演算讓排版定位
+            }
+            renderGraph();
+        }
+
+        // 簡易力導向排出演算法 (Force-Directed Graph)
+        function runPhysics() {
+            const kRepulsion = 400; // 斥力
+            const kLink = 0.04;     // 引力係數
+            const center = { x: canvas.width / 2, y: canvas.height / 2 };
+
+            // 1. 節點間相互斥力
+            for (let i = 0; i < nodes.length; i++) {
+                for (let j = i + 1; j < nodes.length; j++) {
+                    let dx = nodes[j].x - nodes[i].x;
+                    let dy = nodes[j].y - nodes[i].y;
+                    let dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                    if (dist < 250) {
+                        let force = kRepulsion / (dist * dist);
+                        nodes[i].vx -= force * (dx / dist);
+                        nodes[i].vy -= force * (dy / dist);
+                        nodes[j].vx += force * (dx / dist);
+                        nodes[j].vy += force * (dy / dist);
+                    }
+                }
+            }
+
+            // 2. 連線引力
+            edges.forEach(edge => {
+                let s = nodes.find(n => n.id === edge.source);
+                let t = nodes.find(n => n.id === edge.target);
+                if (s && t) {
+                    let dx = t.x - s.x;
+                    let dy = t.y - s.y;
+                    let dist = Math.sqrt(dx * dx + dy * dy) || 1;
+                    let force = kLink * (dist - 40) * Math.log1p(edge.weight);
+                    s.vx += force * (dx / dist);
+                    s.vy += force * (dy / dist);
+                    t.vx -= force * (dx / dist);
+                    t.vy -= force * (dy / dist);
+                }
+            });
+
+            // 3. 向心力與位移更新
+            nodes.forEach(n => {
+                if (n === draggedNode) return;
+                let dx = center.x - n.x;
+                let dy = center.y - n.y;
+                n.vx += dx * 0.005;
+                n.vy += dy * 0.005;
+
+                n.x += n.vx;
+                n.y += n.vy;
+                n.vx *= 0.6; // 阻尼
+                n.vy *= 0.6;
+            });
+        }
+
+        function renderGraph() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.save();
+            // 套用縮放與拖曳平移
+            ctx.translate(transform.x, transform.y);
+            ctx.scale(transform.k, transform.k);
+
+            // A. 畫連線
+            edges.forEach(edge => {
+                let s = nodes.find(n => n.id === edge.source);
+                let t = nodes.find(n => n.id === edge.target);
+                if (s && t) {
+                    ctx.beginPath();
+                    ctx.moveTo(s.x, s.y);
+                    ctx.lineTo(t.x, t.y);
+                    ctx.strokeStyle = `rgba(0, 242, 254, ${Math.min(0.05 + edge.weight * 0.08, 0.6)})`;
+                    ctx.lineWidth = Math.min(1 + edge.weight * 0.5, 6);
+                    ctx.stroke();
+                }
+            });
+
+            // B. 畫節點
+            nodes.forEach(n => {
+                ctx.beginPath();
+                ctx.arc(n.x, n.y, n.radius, 0, 2 * Math.PI);
+                
+                // 區分選中狀態與一般狀態色調
+                if (selectedSubTag === n.id) {
+                    ctx.fillStyle = '#fff';
+                    ctx.shadowBlur = 15;
+                    ctx.shadowColor = varColor('--accent-neon');
+                } else {
+                    ctx.fillStyle = 'rgba(121, 40, 202, 0.85)';
+                    ctx.shadowBlur = 0;
+                }
+                ctx.fill();
+
+                // 畫外圈
+                ctx.strokeStyle = selectedSubTag === n.id ? varColor('--accent-neon') : 'rgba(0, 242, 254, 0.4)';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+
+                // 寫文字標籤
+                ctx.fillStyle = varColor('--text-primary');
+                ctx.font = `bold ${Math.max(11, n.radius * 0.75)}px ${varColor('--font-family')}`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.shadowBlur = 4;
+                ctx.shadowColor = '#000';
+                ctx.fillText(n.id, n.x, n.y + n.radius + 14);
+                ctx.shadowBlur = 0; // 還原
+            });
+
+            ctx.restore();
+        }
+
+        function varColor(varName) {
+            return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+        }
+
+        // 5. Canvas 滑鼠事件（縮放、拖曳、點擊節點二級篩選）
+        function setupCanvasEvents() {
+            // 轉化點座標為實際 Canvas 縮放後的相對位置
+            function getCanvasMousePos(e) {
+                const rect = canvas.getBoundingClientRect();
+                const mouseX = e.clientX - rect.left;
+                const mouseY = e.clientY - rect.top;
+                return {
+                    x: (mouseX - transform.x) / transform.k,
+                    y: (mouseY - transform.y) / transform.k
+                };
+            }
+
+            canvas.addEventListener('mousedown', (e) => {
+                const pos = getCanvasMousePos(e);
+                // 檢查是否點擊到節點
+                const target = nodes.find(n => {
+                    const dist = Math.hypot(n.x - pos.x, n.y - pos.y);
+                    return dist < n.radius + 5;
+                });
+
+                if (target) {
+                    draggedNode = target;
+                } else {
+                    isDraggingCanvas = true;
+                    dragStart = { x: e.clientX - transform.x, y: e.clientY - transform.y };
+                }
+            });
+
+            window.addEventListener('mousemove', (e) => {
+                if (draggedNode) {
+                    const rect = canvas.getBoundingClientRect();
+                    const mouseX = e.clientX - rect.left;
+                    const mouseY = e.clientY - rect.top;
+                    draggedNode.x = (mouseX - transform.x) / transform.k;
+                    draggedNode.y = (mouseY - transform.y) / transform.k;
+                    renderGraph();
+                } else if (isDraggingCanvas) {
+                    transform.x = e.clientX - dragStart.x;
+                    transform.y = e.clientY - dragStart.y;
+                    renderGraph();
+                }
+            });
+
+            window.addEventListener('mouseup', (e) => {
+                if (draggedNode) {
+                    // 如果放開滑鼠時沒過度偏離，視為點擊事件進行二次過濾
+                    selectedSubTag = (selectedSubTag === draggedNode.id) ? null : draggedNode.id;
+                    updateFiltersAndResults();
+                    draggedNode = null;
+                }
+                isDraggingCanvas = false;
+            });
+
+            // 滾輪縮放
+            canvas.addEventListener('wheel', (e) => {
+                e.preventDefault();
+                const zoomFactor = 1.1;
+                if (e.deltaY < 0) {
+                    transform.k *= zoomFactor;
+                } else {
+                    transform.k /= zoomFactor;
+                }
+                transform.k = Math.max(0.3, Math.min(transform.k, 4)); // 限制範圍
+                renderGraph();
+            }, { passive: false });
+        }
+    </script>
+</body>
+</html>
