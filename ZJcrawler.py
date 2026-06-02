@@ -34,18 +34,18 @@ def get_problem(pid):
         # print(res.text)
         soup = BeautifulSoup(res.text, "html.parser")
         
-        title = soup.find("title").text.strip()
+        title = soup.find("title").text.replace("- 高中生程式解題系統", "").strip()
         content = soup.get_text()
         # print(content)
         span = soup.find("span", class_="tag")
         tags = [a.text.strip() for a in span.find_all("a")]
         # print(tags)
         span = soup.find("span", title="解題統計")
-        passrate = [a.text.strip() for a in span.find_all("a")]
+        passrate = [a.text.replace("人","").strip() for a in span.find_all("a")]
 
        
-        # 找到 span id="reference"
-        span = soup.find("span", id="reference")
+        # 找到 div class="problembox" 下面的所有 a 的文字
+        span = soup.find("span", id="reference").parent
 
         # 抓裡面所有 a 的文字
        
