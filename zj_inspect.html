@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ZeroJudge 題庫智能檢索系統</title>
+    <link rel="stylesheet" href="https://unpkg.com/vis-network/styles/vis-network.min.css" />
     <style>
         :root {
             --bg-main: #0a0f1d;
@@ -194,16 +195,13 @@
             overflow: hidden;
         }
 
-        canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
+        #network {
             width: 100%;
             height: 100%;
             cursor: grab;
         }
 
-        canvas:active {
+        #network:active {
             cursor: grabbing;
         }
 
@@ -431,8 +429,8 @@
     <div class="app-container">
         <div class="column" id="left-col">
             <div class="tabs">
-                <button class="tab-btn active" onclick="switchLeftTab('tags')">核心標籤</button>
-                <button class="tab-btn" onclick="switchLeftTab('source')">題目出處</button>
+                <button class="tab-btn active" onclick="switchLeftTab('tags', this)">核心標籤</button>
+                <button class="tab-btn" onclick="switchLeftTab('source', this)">題目出處</button>
             </div>
             <div class="list-container" id="left-list">
                 </div>
@@ -443,7 +441,7 @@
                 <span>標籤關係網共生矩陣 (知識地圖)</span>
             </div>
             <div class="canvas-container" id="canvas-wrap">
-                <canvas id="graphCanvas"></canvas>
+                <div id="network"></div>
                 <div class="map-hint">💡 滾輪縮放、按住拖曳。點擊節點可二次過濾右側清單。</div>
             </div>
         </div>
@@ -480,6 +478,7 @@
         </div>
     </div>
 
+    <script src="https://unpkg.com/vis-network@9.1.2/dist/vis-network.min.js"></script>
     <script>
         // 全域資料儲存
         let rawData = [];
@@ -489,21 +488,15 @@
         let minPassrate = 0;
         let maxPassrateData = 1000;
 
-        // 關聯圖畫布狀態
-        const canvas = document.getElementById('graphCanvas');
-        const ctx = canvas.getContext('2d');
-        let nodes = [];
-        let edges = [];
-        let transform = { x: 0, y: 0, k: 1 };
-        let draggedNode = null;
-        let isDraggingCanvas = false;
-        let dragStart = { x: 0, y: 0 };
+        // 關聯圖網路狀態
+        const networkContainer = document.getElementById('network');
+        let network = null;
 
         // 初始載入
         window.addEventListener('DOMContentLoaded', async () => {
             setupCanvasSize();
-            window.addEventListener('resize', () => { setupCanvasSize(); renderGraph(); });
-            setupCanvasEvents();
+            setupNetwork();
+            window.addEventListener('resize', setupCanvasSize);
             setupSliderEvent();
 
             try {
@@ -541,10 +534,10 @@
         });
 
         // 1. 左側頁籤與列表引擎
-        function switchLeftTab(tab) {
+        function switchLeftTab(tab, button) {
             currentTab = tab;
             document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
-            event.target.classList.add('active');
+            button.classList.add('active');
             initLeftList();
         }
 
@@ -676,11 +669,69 @@
             });
         }
 
-        // 4. 中間欄位 Canvas 拓撲關聯地圖
+        // 4. 中間欄位 vis-network 關聯地圖
+        const networkContainer = document.getElementById('network');
+        let network = null;
+
         function setupCanvasSize() {
             const wrap = document.getElementById('canvas-wrap');
-            canvas.width = wrap.clientWidth;
-            canvas.height = wrap.clientHeight;
+            networkContainer.style.width = `${wrap.clientWidth}px`;
+            networkContainer.style.height = `${wrap.clientHeight}px`;
+            if (network) {
+                network.redraw();
+            }
+        }
+
+        function setupNetwork() {
+            const data = {
+                nodes: new vis.DataSet([]),
+                edges: new vis.DataSet([])
+            };
+
+            const options = {
+                autoResize: true,
+                height: '100%',
+                width: '100%',
+                interaction: {
+                    hover: true,
+                    navigationButtons: true,
+                    keyboard: true,
+                    dragView: true,
+                    zoomView: true
+                },
+                nodes: {
+                    shape: 'dot',
+                    font: { color: '#ffffff', size: 14, face: 'Segoe UI, sans-serif' },
+                    borderWidth: 2
+                },
+                edges: {
+                    smooth: { type: 'continuous' },
+                    color: { color: '#00f2fe', highlight: '#00f2fe' },
+                    width: 1,
+                    arrows: { to: false }
+                },
+                physics: {
+                    enabled: true,
+                    stabilization: { iterations: 250, updateInterval: 25 },
+                    barnesHut: {
+                        gravitationalConstant: -8000,
+                        centralGravity: 0.3,
+                        springLength: 200,
+                        springConstant: 0.04,
+                        damping: 0.09
+                    }
+                },
+                layout: { improvedLayout: false }
+            };
+
+            network = new vis.Network(networkContainer, data, options);
+            network.on('click', params => {
+                if (params.nodes.length > 0) {
+                    const nodeId = params.nodes[0];
+                    selectedSubTag = selectedSubTag === nodeId ? null : nodeId;
+                    updateFiltersAndResults();
+                }
+            });
         }
 
         function buildRelationGraph(questions) {
@@ -704,220 +755,42 @@
                 }
             });
 
-            // 轉換為節點，限制地圖節點避免混亂 (取權重前40大標籤)
             const sortedTags = Object.entries(tagWeights).sort((a,b)=>b[1]-a[1]).slice(0, 40);
             const activeTagNames = sortedTags.map(e => e[0]);
 
-            // 保持舊節點位置的平滑過渡
-            const oldNodesMap = new Map(nodes.map(n => [n.id, n]));
-            
-            nodes = sortedTags.map(([name, weight]) => {
-                const old = oldNodesMap.get(name);
-                return {
-                    id: name,
-                    radius: 8 + Math.sqrt(weight) * 3,
-                    x: old ? old.x : canvas.width / 2 + (Math.random() - 0.5) * 200,
-                    y: old ? old.y : canvas.height / 2 + (Math.random() - 0.5) * 200,
-                    weight: weight,
-                    vx: 0, vy: 0
-                };
-            });
+            const nodesData = sortedTags.map(([name, weight]) => ({
+                id: name,
+                label: name,
+                title: `${name}\n共 ${weight} 道題`,
+                value: weight,
+                size: 14 + Math.sqrt(weight) * 4,
+                color: selectedSubTag === name
+                    ? { background: '#ffffff', border: '#00f2fe', highlight: { background: '#ffffff', border: '#00f2fe' } }
+                    : { background: '#7928ca', border: '#00f2fe', highlight: { background: '#7c3aed', border: '#00f2fe' } }
+            }));
 
-            // 建立連線
-            edges = [];
-            Object.entries(cooccurrence).forEach(([key, weight]) => {
+            const edgesData = Object.entries(cooccurrence).reduce((arr, [key, weight]) => {
                 const [t1, t2] = key.split('_');
                 if (activeTagNames.includes(t1) && activeTagNames.includes(t2)) {
-                    edges.push({ source: t1, target: t2, weight: weight });
+                    arr.push({
+                        from: t1,
+                        to: t2,
+                        value: weight,
+                        width: Math.min(1 + weight * 0.4, 7),
+                        title: `共 ${weight} 道共生`
+                    });
                 }
-            });
+                return arr;
+            }, []);
 
-            // 重啟物理力學模擬
-            if(nodes.length > 0) {
-                for (let i = 0; i < 60; i++) runPhysics(); // 預先演算讓排版定位
-            }
-            renderGraph();
-        }
-
-        // 簡易力導向排出演算法 (Force-Directed Graph)
-        function runPhysics() {
-            const kRepulsion = 400; // 斥力
-            const kLink = 0.04;     // 引力係數
-            const center = { x: canvas.width / 2, y: canvas.height / 2 };
-
-            // 1. 節點間相互斥力
-            for (let i = 0; i < nodes.length; i++) {
-                for (let j = i + 1; j < nodes.length; j++) {
-                    let dx = nodes[j].x - nodes[i].x;
-                    let dy = nodes[j].y - nodes[i].y;
-                    let dist = Math.sqrt(dx * dx + dy * dy) || 1;
-                    if (dist < 250) {
-                        let force = kRepulsion / (dist * dist);
-                        nodes[i].vx -= force * (dx / dist);
-                        nodes[i].vy -= force * (dy / dist);
-                        nodes[j].vx += force * (dx / dist);
-                        nodes[j].vy += force * (dy / dist);
-                    }
-                }
+            if (!network) {
+                setupNetwork();
             }
 
-            // 2. 連線引力
-            edges.forEach(edge => {
-                let s = nodes.find(n => n.id === edge.source);
-                let t = nodes.find(n => n.id === edge.target);
-                if (s && t) {
-                    let dx = t.x - s.x;
-                    let dy = t.y - s.y;
-                    let dist = Math.sqrt(dx * dx + dy * dy) || 1;
-                    let force = kLink * (dist - 40) * Math.log1p(edge.weight);
-                    s.vx += force * (dx / dist);
-                    s.vy += force * (dy / dist);
-                    t.vx -= force * (dx / dist);
-                    t.vy -= force * (dy / dist);
-                }
-            });
-
-            // 3. 向心力與位移更新
-            nodes.forEach(n => {
-                if (n === draggedNode) return;
-                let dx = center.x - n.x;
-                let dy = center.y - n.y;
-                n.vx += dx * 0.005;
-                n.vy += dy * 0.005;
-
-                n.x += n.vx;
-                n.y += n.vy;
-                n.vx *= 0.6; // 阻尼
-                n.vy *= 0.6;
-            });
-        }
-
-        function renderGraph() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            ctx.save();
-            // 套用縮放與拖曳平移
-            ctx.translate(transform.x, transform.y);
-            ctx.scale(transform.k, transform.k);
-
-            // A. 畫連線
-            edges.forEach(edge => {
-                let s = nodes.find(n => n.id === edge.source);
-                let t = nodes.find(n => n.id === edge.target);
-                if (s && t) {
-                    ctx.beginPath();
-                    ctx.moveTo(s.x, s.y);
-                    ctx.lineTo(t.x, t.y);
-                    ctx.strokeStyle = `rgba(0, 242, 254, ${Math.min(0.05 + edge.weight * 0.08, 0.6)})`;
-                    ctx.lineWidth = Math.min(1 + edge.weight * 0.5, 6);
-                    ctx.stroke();
-                }
-            });
-
-            // B. 畫節點
-            nodes.forEach(n => {
-                ctx.beginPath();
-                ctx.arc(n.x, n.y, n.radius, 0, 2 * Math.PI);
-                
-                // 區分選中狀態與一般狀態色調
-                if (selectedSubTag === n.id) {
-                    ctx.fillStyle = '#fff';
-                    ctx.shadowBlur = 15;
-                    ctx.shadowColor = varColor('--accent-neon');
-                } else {
-                    ctx.fillStyle = 'rgba(121, 40, 202, 0.85)';
-                    ctx.shadowBlur = 0;
-                }
-                ctx.fill();
-
-                // 畫外圈
-                ctx.strokeStyle = selectedSubTag === n.id ? varColor('--accent-neon') : 'rgba(0, 242, 254, 0.4)';
-                ctx.lineWidth = 1.5;
-                ctx.stroke();
-
-                // 寫文字標籤
-                ctx.fillStyle = varColor('--text-primary');
-                ctx.font = `bold ${Math.max(11, n.radius * 0.75)}px ${varColor('--font-family')}`;
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.shadowBlur = 4;
-                ctx.shadowColor = '#000';
-                ctx.fillText(n.id, n.x, n.y + n.radius + 14);
-                ctx.shadowBlur = 0; // 還原
-            });
-
-            ctx.restore();
-        }
-
-        function varColor(varName) {
-            return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
-        }
-
-        // 5. Canvas 滑鼠事件（縮放、拖曳、點擊節點二級篩選）
-        function setupCanvasEvents() {
-            // 轉化點座標為實際 Canvas 縮放後的相對位置
-            function getCanvasMousePos(e) {
-                const rect = canvas.getBoundingClientRect();
-                const mouseX = e.clientX - rect.left;
-                const mouseY = e.clientY - rect.top;
-                return {
-                    x: (mouseX - transform.x) / transform.k,
-                    y: (mouseY - transform.y) / transform.k
-                };
+            network.setData({ nodes: new vis.DataSet(nodesData), edges: new vis.DataSet(edgesData) });
+            if (nodesData.length > 0) {
+                network.fit({ animation: { duration: 300 } });
             }
-
-            canvas.addEventListener('mousedown', (e) => {
-                const pos = getCanvasMousePos(e);
-                // 檢查是否點擊到節點
-                const target = nodes.find(n => {
-                    const dist = Math.hypot(n.x - pos.x, n.y - pos.y);
-                    return dist < n.radius + 5;
-                });
-
-                if (target) {
-                    draggedNode = target;
-                } else {
-                    isDraggingCanvas = true;
-                    dragStart = { x: e.clientX - transform.x, y: e.clientY - transform.y };
-                }
-            });
-
-            window.addEventListener('mousemove', (e) => {
-                if (draggedNode) {
-                    const rect = canvas.getBoundingClientRect();
-                    const mouseX = e.clientX - rect.left;
-                    const mouseY = e.clientY - rect.top;
-                    draggedNode.x = (mouseX - transform.x) / transform.k;
-                    draggedNode.y = (mouseY - transform.y) / transform.k;
-                    renderGraph();
-                } else if (isDraggingCanvas) {
-                    transform.x = e.clientX - dragStart.x;
-                    transform.y = e.clientY - dragStart.y;
-                    renderGraph();
-                }
-            });
-
-            window.addEventListener('mouseup', (e) => {
-                if (draggedNode) {
-                    // 如果放開滑鼠時沒過度偏離，視為點擊事件進行二次過濾
-                    selectedSubTag = (selectedSubTag === draggedNode.id) ? null : draggedNode.id;
-                    updateFiltersAndResults();
-                    draggedNode = null;
-                }
-                isDraggingCanvas = false;
-            });
-
-            // 滾輪縮放
-            canvas.addEventListener('wheel', (e) => {
-                e.preventDefault();
-                const zoomFactor = 1.1;
-                if (e.deltaY < 0) {
-                    transform.k *= zoomFactor;
-                } else {
-                    transform.k /= zoomFactor;
-                }
-                transform.k = Math.max(0.3, Math.min(transform.k, 4)); // 限制範圍
-                renderGraph();
-            }, { passive: false });
         }
     </script>
 </body>
